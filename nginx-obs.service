@@ -1,0 +1,15 @@
+[Unit]
+Description=NGINX Observability Dashboard
+After=network.target nginx.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/nginx-obs
+ExecStart=/opt/nginx-obs/venv/bin/python /opt/nginx-obs/app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
