@@ -121,3 +121,15 @@ session.md                      This file
 - SSE over WebSocket: simpler, no special nginx config needed
 - Relative EventSource URL: works transparently under nginx proxy or direct port
 - `splines=spline` in Graphviz DOT: `ortho` drops edge labels silently
+
+## Issues encountered
+- **403 on /nginx_status from LAN**: initial nginx location only allowed `127.0.0.1`;
+  added `allow 192.168.1.0/24` after user hit 403 from worlock browser
+- **Background task push silently failed**: `git push` inside a background shell runner
+  hit an SSL connection timeout (`fatal: unable to access ... SSL connection timeout`);
+  the task output showed the commit summary but not the push error, making it appear
+  successful. Manual `git push origin main` on the second attempt succeeded.
+  Lesson: don't rely on background task output to confirm `git push` — verify with
+  `git log --oneline origin/main` afterwards.
+
+## Completed: 2026-04-28
