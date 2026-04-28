@@ -1,0 +1,123 @@
+digraph threading {
+    graph [
+        bgcolor="#0d1117"
+        fontname="Helvetica"
+        fontcolor="#e6edf3"
+        label="NGINX Observatory — Threading Model"
+        labelloc="t"
+        fontsize=18
+        pad=0.6
+        splines=spline
+        rankdir=LR
+        nodesep=0.7
+        ranksep=1.0
+    ]
+    node [
+        fontname="Helvetica"
+        fontsize=12
+        fontcolor="#e6edf3"
+        style="filled,rounded"
+        shape=box
+        penwidth=1.5
+    ]
+    edge [
+        fontname="Helvetica"
+        fontsize=10
+        penwidth=1.5
+        fontcolor="#7d8590"
+    ]
+
+    // Process
+    subgraph cluster_process {
+        label="nginx-obs process  (www-data)"
+        fontcolor="#e6edf3"
+        fontsize=13
+        color="#21262d"
+        style=filled
+        fillcolor="#0f1117"
+
+        // Thread 1 - collector
+        subgraph cluster_t1 {
+            label="Thread: _collector  (daemon)"
+            fontcolor="#38bdf8"
+            fontsize=11
+            color="#1a2a3a"
+            style=filled
+            fillcolor="#0d1520"
+
+            t1_init   [label="startup\nget nginx version" fillcolor="#161b22" color="#38bdf8"]
+            t1_loop   [label="loop forever" fillcolor="#161b22" color="#38bdf8" shape=diamond]
+            t1_stub   [label="urlopen()\n/nginx_status" fillcolor="#161b22" color="#3fb950"]
+            t1_pid    [label="read /run/nginx.pid\nread /proc/PID/stat\npgrep -c nginx" fillcolor="#161b22" color="#38bdf8"]
+            t1_calc   [label="calc RPS delta\nupdate nginx_meta" fillcolor="#161b22" color="#38bdf8"]
+            t1_lock   [label="acquire _lock\nappend ts_conn\nappend ts_rps\nrelease _lock" fillcolor="#1a2a3a" color="#38bdf8"]
+            t1_sleep  [label="sleep 1s" fillcolor="#161b22" color="#7d8590" shape=ellipse]
+
+            t1_init -> t1_loop
+            t1_loop -> t1_stub  [label="yes" color="#38bdf8"]
+            t1_stub  -> t1_pid
+            t1_pid   -> t1_calc
+            t1_calc  -> t1_lock
+            t1_lock  -> t1_sleep
+            t1_sleep -> t1_loop [style=dashed color="#7d8590"]
+        }
+
+        // Thread 2 - log tailer
+        subgraph cluster_t2 {
+            label="Thread: _log_tailer  (daemon)"
+            fontcolor="#a371f7"
+            fontsize=11
+            color="#2a1a3a"
+            style=filled
+            fillcolor="#150d20"
+
+            t2_seed   [label="seed from\nlog.1 + log" fillcolor="#161b22" color="#a371f7"]
+            t2_tail   [label="Popen\ntail -n0 -F\naccess.log" fillcolor="#161b22" color="#a371f7"]
+            t2_read   [label="read line\nfrom stdout" fillcolor="#161b22" color="#a371f7" shape=diamond]
+            t2_parse  [label="regex parse\nip · path\nstatus · size" fillcolor="#161b22" color="#a371f7"]
+            t2_lock   [label="acquire _lock\npath_counts++\nip_counts++\nstatus_win.append\nrecent_log.appendleft\nrelease _lock" fillcolor="#2a1a3a" color="#a371f7"]
+
+            t2_seed -> t2_tail
+            t2_tail -> t2_read
+            t2_read -> t2_parse [label="line" color="#a371f7"]
+            t2_read -> t2_read  [label="wait" color="#7d8590" style=dashed]
+            t2_parse -> t2_lock
+            t2_lock  -> t2_read [style=dashed color="#7d8590"]
+        }
+
+        // Thread 3 - Flask/SSE workers
+        subgraph cluster_t3 {
+            label="Flask  (threaded=True)  — per SSE client"
+            fontcolor="#3fb950"
+            fontsize=11
+            color="#1a3a1a"
+            style=filled
+            fillcolor="#0d1f0d"
+
+            t3_client [label="SSE client\nconnects" fillcolor="#161b22" color="#3fb950"]
+            t3_loop   [label="loop forever" fillcolor="#161b22" color="#3fb950" shape=diamond]
+            t3_lock   [label="acquire _lock\nsnapshot all state\nrelease _lock" fillcolor="#1a3a1a" color="#3fb950"]
+            t3_build  [label="build JSON\npayload" fillcolor="#161b22" color="#3fb950"]
+            t3_emit   [label="yield\n'data: {...}\\n\\n'" fillcolor="#161b22" color="#3fb950"]
+            t3_sleep  [label="sleep 2s" fillcolor="#161b22" color="#7d8590" shape=ellipse]
+
+            t3_client -> t3_loop
+            t3_loop   -> t3_lock [label="connected" color="#3fb950"]
+            t3_lock   -> t3_build
+            t3_build  -> t3_emit
+            t3_emit   -> t3_sleep
+            t3_sleep  -> t3_loop [style=dashed color="#7d8590"]
+        }
+
+        // Shared lock annotation
+        lock_note [
+            label="threading.Lock()\n_lock"
+            fillcolor="#1a1500" color="#d29922" fontcolor="#d29922"
+            shape=hexagon
+        ]
+    }
+
+    t1_lock -> lock_note [color="#38bdf8" style=dotted arrowhead=none]
+    t2_lock -> lock_note [color="#a371f7" style=dotted arrowhead=none]
+    t3_lock -> lock_note [color="#3fb950" style=dotted arrowhead=none]
+}

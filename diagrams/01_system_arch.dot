@@ -1,0 +1,99 @@
+digraph system_arch {
+    graph [
+        bgcolor="#0d1117"
+        fontname="Helvetica"
+        fontcolor="#e6edf3"
+        label="NGINX Observatory — System Architecture"
+        labelloc="t"
+        fontsize=18
+        pad=0.5
+        splines=spline
+        rankdir=LR
+    ]
+    node [
+        fontname="Helvetica"
+        fontsize=12
+        fontcolor="#e6edf3"
+        style="filled,rounded"
+        shape=box
+        penwidth=1.5
+    ]
+    edge [
+        fontname="Helvetica"
+        fontsize=10
+        penwidth=1.5
+        fontcolor="#7d8590"
+    ]
+
+    subgraph cluster_lan {
+        label="LAN  192.168.1.0/24"
+        fontcolor="#7d8590"
+        fontsize=11
+        color="#21262d"
+        style=dashed
+
+        browser [
+            label="Browser\nhttp://rpi4/nginx-obs/"
+            fillcolor="#1c2333"
+            color="#a371f7"
+            fontcolor="#a371f7"
+        ]
+    }
+
+    subgraph cluster_rpi4 {
+        label="rpi4  (192.168.1.165)"
+        fontcolor="#38bdf8"
+        fontsize=13
+        color="#21262d"
+        style=filled
+        fillcolor="#0f1923"
+
+        subgraph cluster_nginx {
+            label="nginx 1.26.3  :80"
+            fontcolor="#3fb950"
+            fontsize=11
+            color="#1e3a2a"
+            style=filled
+            fillcolor="#0d1f15"
+
+            nginx_static [label="Static files\n/var/www/html" fillcolor="#161b22" color="#3fb950"]
+            nginx_ntp    [label="/ntp/\nntp-monitor" fillcolor="#161b22" color="#3fb950"]
+            nginx_status [label="/nginx_status\nstub_status module" fillcolor="#161b22" color="#3fb950"]
+            nginx_proxy  [label="/nginx-obs/\nproxy_pass :8081" fillcolor="#161b22" color="#3fb950"]
+        }
+
+        subgraph cluster_flask {
+            label="nginx-obs  :8081  (Flask/SSE)"
+            fontcolor="#38bdf8"
+            fontsize=11
+            color="#1a2a3a"
+            style=filled
+            fillcolor="#0d1520"
+
+            flask_index   [label="GET /\nDashboard HTML" fillcolor="#161b22" color="#38bdf8"]
+            flask_metrics [label="GET /api/metrics\nSSE stream" fillcolor="#161b22" color="#38bdf8"]
+        }
+
+        access_log [
+            label="/var/log/nginx/access.log"
+            fillcolor="#1a1000"
+            color="#d29922"
+            shape=note
+        ]
+    }
+
+    browser      -> nginx_proxy  [label="HTTP GET /nginx-obs/" color="#a371f7"]
+    nginx_proxy  -> flask_index  [label="proxy_pass" color="#3fb950" style=dashed]
+    flask_index  -> nginx_proxy  [label="HTML+JS" color="#38bdf8" style=dashed]
+    nginx_proxy  -> browser      [label="200 OK" color="#a371f7"]
+
+    browser      -> flask_metrics [label="EventSource SSE" color="#a371f7" style=bold]
+    flask_metrics -> browser      [label="data: JSON  (2s)" color="#38bdf8" style=bold]
+
+    flask_metrics -> nginx_status [label="urlopen every 1s" color="#38bdf8"]
+    nginx_status  -> flask_metrics [label="stub_status text" color="#3fb950"]
+
+    access_log    -> flask_metrics [label="tail -F" color="#d29922"]
+
+    browser -> nginx_status [label="direct view\n(LAN allowed)" color="#7d8590" style=dotted]
+}

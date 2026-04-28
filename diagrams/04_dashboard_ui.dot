@@ -1,0 +1,129 @@
+digraph dashboard_ui {
+    graph [
+        bgcolor="#0d1117"
+        fontname="Helvetica"
+        fontcolor="#e6edf3"
+        label="NGINX Observatory — Dashboard UI Components"
+        labelloc="t"
+        fontsize=18
+        pad=0.6
+        splines=spline
+        rankdir=TB
+        nodesep=0.5
+        ranksep=0.6
+    ]
+    node [
+        fontname="Helvetica"
+        fontsize=12
+        fontcolor="#e6edf3"
+        style="filled,rounded"
+        shape=box
+        penwidth=1.5
+    ]
+    edge [
+        fontname="Helvetica"
+        fontsize=10
+        penwidth=1.5
+        fontcolor="#7d8590"
+    ]
+
+    // SSE source
+    sse [
+        label="EventSource\n/api/metrics\n(push every 2s)"
+        fillcolor="#1a2a3a" color="#38bdf8" fontcolor="#38bdf8"
+        shape=parallelogram
+    ]
+
+    subgraph cluster_page {
+        label="http://rpi4/nginx-obs/"
+        fontcolor="#e6edf3"
+        fontsize=13
+        color="#21262d"
+        style=filled
+        fillcolor="#0f1117"
+
+        // Header
+        header [
+            label="Header Bar\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n[ N ]  NGINX Observatory  [rpi4]  ● Updated HH:MM:SS  [nginx/1.26.3]"
+            fillcolor="#161b22" color="#3fb950"
+            shape=record
+        ]
+
+        // Info strip
+        info [
+            label="Instance Info Strip\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nHost | Version | PID | Uptime | Workers | stub_status ✓ | access log ✓"
+            fillcolor="#1c2333" color="#38bdf8"
+        ]
+
+        // Stat cards row
+        subgraph cluster_cards {
+            label="Stat Cards"
+            fontcolor="#7d8590"
+            fontsize=10
+            color="#21262d"
+            style=dashed
+
+            card_conn [label="Active\nConnections\n(green)" fillcolor="#0d1f15" color="#3fb950" fontcolor="#3fb950"]
+            card_rps  [label="Requests\n/ sec\n(cyan)" fillcolor="#0d1520" color="#38bdf8" fontcolor="#38bdf8"]
+            card_err  [label="Error Rate\n5 min\n(red)" fillcolor="#1f0d0d" color="#f85149" fontcolor="#f85149"]
+            card_wait [label="Waiting\nR: / W:\n(purple)" fillcolor="#1a0d2a" color="#a371f7" fontcolor="#a371f7"]
+        }
+
+        // Charts row
+        subgraph cluster_charts {
+            label="Line Charts  (Chart.js)  — 120-sample / 2-min window"
+            fontcolor="#7d8590"
+            fontsize=10
+            color="#21262d"
+            style=dashed
+
+            chart_conn [label="Active Connections\nover time\n━━━╮\n    ╰━━━━━━" fillcolor="#161b22" color="#3fb950" fontcolor="#3fb950" shape=record]
+            chart_rps  [label="Requests / sec\nover time\n━╮ ╭━━━\n  ╰╯" fillcolor="#161b22" color="#38bdf8" fontcolor="#38bdf8" shape=record]
+        }
+
+        // Status row
+        subgraph cluster_status {
+            label="Status Code Distribution  — 5-min rolling window"
+            fontcolor="#7d8590"
+            fontsize=10
+            color="#21262d"
+            style=dashed
+
+            donut  [label="Doughnut Chart\n2xx ● 3xx ● 4xx ● 5xx" fillcolor="#161b22" color="#d29922" fontcolor="#d29922" shape=circle]
+            legend [label="Legend\n■ 2xx OK        N\n■ 3xx Redirect  N\n■ 4xx Client    N\n■ 5xx Server    N" fillcolor="#161b22" color="#d29922"]
+        }
+
+        // Tables row
+        subgraph cluster_tables {
+            label="Ranked Tables  — cumulative since startup"
+            fontcolor="#7d8590"
+            fontsize=10
+            color="#21262d"
+            style=dashed
+
+            tbl_paths [label="Top Paths\n━━━━━━━━━━━━━━━\n/ ████████ 881\n/favicon… ███ 874\n..." fillcolor="#161b22" color="#a371f7" fontcolor="#a371f7"]
+            tbl_ips   [label="Top Client IPs\n━━━━━━━━━━━━━━━\n192.168.1.135 ██ 1748\n127.0.0.1     ░ 19\n..." fillcolor="#161b22" color="#a371f7" fontcolor="#a371f7"]
+        }
+
+        // Log panel
+        log_panel [
+            label="Live Access Log Tail\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n192.168.1.x  \"GET /path\"  200  …\n127.0.0.1    \"GET /nginx_status\"  200  …"
+            fillcolor="#090e18" color="#d29922" fontcolor="#d29922"
+            shape=note
+        ]
+    }
+
+    sse -> header    [color="#38bdf8" label="nginx{}\nuptime"]
+    sse -> info      [color="#38bdf8"]
+    sse -> card_conn [color="#3fb950"  label="active"]
+    sse -> card_rps  [color="#38bdf8"  label="rps_now"]
+    sse -> card_err  [color="#f85149"  label="error_rate"]
+    sse -> card_wait [color="#a371f7"  label="waiting\nreading\nwriting"]
+    sse -> chart_conn [color="#3fb950" label="conn_active[]"]
+    sse -> chart_rps  [color="#38bdf8" label="rps[]"]
+    sse -> donut     [color="#d29922"  label="status{}"]
+    sse -> legend    [color="#d29922"]
+    sse -> tbl_paths [color="#a371f7"  label="top_paths[]"]
+    sse -> tbl_ips   [color="#a371f7"  label="top_ips[]"]
+    sse -> log_panel [color="#d29922"  label="logs[]"]
+}

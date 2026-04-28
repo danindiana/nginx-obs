@@ -1,0 +1,126 @@
+digraph deployment {
+    graph [
+        bgcolor="#0d1117"
+        fontname="Helvetica"
+        fontcolor="#e6edf3"
+        label="NGINX Observatory — Deployment Topology"
+        labelloc="t"
+        fontsize=18
+        pad=0.6
+        splines=spline
+        rankdir=TB
+        nodesep=0.7
+        ranksep=0.9
+    ]
+    node [
+        fontname="Helvetica"
+        fontsize=12
+        fontcolor="#e6edf3"
+        style="filled,rounded"
+        shape=box
+        penwidth=1.5
+    ]
+    edge [
+        fontname="Helvetica"
+        fontsize=10
+        penwidth=1.5
+        fontcolor="#7d8590"
+    ]
+
+    subgraph cluster_internet {
+        label="WAN  (blocked)"
+        fontcolor="#f85149"
+        fontsize=11
+        color="#3a0d0d"
+        style=dashed
+        wan [label="Internet" fillcolor="#1f0d0d" color="#f85149" fontcolor="#f85149" shape=cloud]
+    }
+
+    subgraph cluster_lan {
+        label="LAN  192.168.1.0/24"
+        fontcolor="#7d8590"
+        fontsize=11
+        color="#21262d"
+        style=dashed
+
+        worlock [
+            label="worlock  (192.168.1.135)\nBrowser / curl"
+            fillcolor="#1c2333" color="#a371f7" fontcolor="#a371f7"
+        ]
+    }
+
+    subgraph cluster_rpi4 {
+        label="rpi4  (192.168.1.165)  Debian Trixie"
+        fontcolor="#38bdf8"
+        fontsize=14
+        color="#21262d"
+        style=filled
+        fillcolor="#0f1117"
+
+        // UFW
+        ufw [
+            label="UFW\n:80  allow LAN\n:8081 allow LAN\n:22   allow LAN\nWAN  deny"
+            fillcolor="#1a1500" color="#d29922" fontcolor="#d29922"
+            shape=hexagon
+        ]
+
+        subgraph cluster_nginx_svc {
+            label="nginx.service"
+            fontcolor="#3fb950"
+            fontsize=11
+            color="#1e3a2a"
+            style=filled
+            fillcolor="#0d1f15"
+
+            nginx_80   [label=":80  listen" fillcolor="#161b22" color="#3fb950"]
+            loc_root   [label="location /\ntry_files → ntp/index.html" fillcolor="#161b22" color="#3fb950"]
+            loc_ntp    [label="location /ntp/\nalias /var/www/html/ntp/" fillcolor="#161b22" color="#3fb950"]
+            loc_status [label="location /nginx_status\nstub_status on\nallow LAN + localhost" fillcolor="#161b22" color="#3fb950"]
+            loc_obs    [label="location /nginx-obs/\nproxy_pass http://127.0.0.1:8081/\nbuffering off" fillcolor="#161b22" color="#38bdf8"]
+        }
+
+        subgraph cluster_obs_svc {
+            label="nginx-obs.service  (www-data)"
+            fontcolor="#38bdf8"
+            fontsize=11
+            color="#1a2a3a"
+            style=filled
+            fillcolor="#0d1520"
+
+            flask_app  [label="app.py\nFlask  :8081" fillcolor="#161b22" color="#38bdf8"]
+            venv       [label="/opt/nginx-obs/venv\nPython 3.13 + flask" fillcolor="#161b22" color="#7d8590" shape=folder]
+            systemd_sd [label="Restart=always\nAfter=nginx.service" fillcolor="#161b22" color="#7d8590"]
+        }
+
+        subgraph cluster_files {
+            label="Filesystem"
+            fontcolor="#7d8590"
+            fontsize=11
+            color="#21262d"
+            style=dashed
+
+            access_log  [label="/var/log/nginx/access.log\nowner: www-data (readable)" fillcolor="#1a1000" color="#d29922" fontcolor="#d29922" shape=note]
+            pid_file    [label="/run/nginx.pid" fillcolor="#161b22" color="#7d8590" shape=note]
+            app_file    [label="/opt/nginx-obs/app.py" fillcolor="#161b22" color="#38bdf8" shape=note]
+        }
+    }
+
+    wan     -> ufw     [label="blocked" color="#f85149" style=bold]
+    worlock -> ufw     [label=":80 / :8081" color="#a371f7"]
+    ufw     -> nginx_80 [label=":80 allow" color="#3fb950"]
+    ufw     -> flask_app [label=":8081 allow" color="#38bdf8"]
+
+    nginx_80   -> loc_root
+    nginx_80   -> loc_ntp
+    nginx_80   -> loc_status
+    nginx_80   -> loc_obs
+
+    loc_obs -> flask_app [label="proxy_pass" color="#38bdf8" style=dashed]
+
+    flask_app -> venv       [color="#7d8590" style=dotted arrowhead=none]
+    flask_app -> systemd_sd [color="#7d8590" style=dotted arrowhead=none]
+    flask_app -> access_log [label="tail -F" color="#d29922"]
+    flask_app -> loc_status [label="urlopen\nlocalhost" color="#3fb950"]
+    flask_app -> pid_file   [label="read" color="#7d8590" style=dotted]
+    app_file  -> flask_app  [color="#38bdf8" style=dotted]
+}

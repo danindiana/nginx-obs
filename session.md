@@ -2,10 +2,10 @@
 
 ## Goal
 Build a web-based NGINX observability / telemetry dashboard for the rpi4 nginx instance,
-inspired by F5 NGINX One Console.
+inspired by F5 NGINX One Console. Push to GitHub. Document fully.
 
 ## System state at start
-- rpi4: Debian Trixie, IP 192.168.1.165
+- rpi4: Debian Trixie, IP 192.168.1.165, `ssh rpi4` from worlock
 - nginx 1.26.3, compiled with `--with-http_stub_status_module`
 - Serving NTP monitor at `/` (port 80), access log at `/var/log/nginx/access.log`
 - nginx PID 707, 4 worker processes
@@ -22,7 +22,7 @@ Python 3 / Flask application running on port 8081.
 **Threading model:**
 - `_collector` thread: polls stub_status every 1 s, appends to `ts_conn` / `ts_rps` deques (maxlen=120)
 - `_log_tailer` thread: `tail -F` loop appending to `status_win`, `path_counts`, `ip_counts`, `recent_log`
-- SSE generator (`/api/metrics`): reads shared state under lock, emits JSON every 2 s
+- SSE generator (`/api/metrics`): reads shared state under `threading.Lock`, emits JSON every 2 s
 
 **Metrics emitted:**
 - Connection time-series (active, reading, writing, waiting) — 120-sample window
@@ -34,6 +34,8 @@ Python 3 / Flask application running on port 8081.
 
 ### Frontend (embedded in app.py)
 Single-page dashboard served from `/`. Uses Chart.js 4.4.3 (CDN) and SSE.
+EventSource URL is relative (`api/metrics`) so it works both at port 8081
+and behind the nginx proxy at `/nginx-obs/`.
 
 **Sections:**
 1. Sticky header — NGINX Observatory branding, live pulse dot, version badge
@@ -44,16 +46,31 @@ Single-page dashboard served from `/`. Uses Chart.js 4.4.3 (CDN) and SSE.
 6. Top Paths + Top IPs tables with relative bar indicators
 7. Live access log tail with IP/status colorization
 
-### nginx config change: `/etc/nginx/sites-enabled/default`
-Added stub_status location (localhost-only):
+### nginx config: `/etc/nginx/sites-enabled/default`
+Two new locations added:
+
 ```nginx
 location /nginx_status {
     stub_status on;
     allow 127.0.0.1;
     allow ::1;
+    allow 192.168.1.0/24;  # added in second session turn
     deny all;
 }
+
+location /nginx-obs/ {
+    proxy_pass http://127.0.0.1:8081/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+}
 ```
+
+Note: LAN CIDR for `/nginx_status` was added after initial deploy when user
+hit 403 trying to browse to the raw stub_status URL from worlock.
 
 ### Systemd service: `/etc/systemd/system/nginx-obs.service`
 - Runs as `www-data` (has access to nginx access log)
@@ -67,16 +84,40 @@ location /nginx_status {
 Port 8081 open for 192.168.1.0/24 (LAN only).
 
 ## Access
-- Dashboard: http://192.168.1.165:8081/
-- SSE endpoint: http://192.168.1.165:8081/api/metrics
+- Dashboard (proxy): http://192.168.1.165/nginx-obs/
+- Dashboard (direct): http://192.168.1.165:8081/
+- Raw stub_status: http://192.168.1.165/nginx_status
 
-## Files
+## GitHub repo
+https://github.com/danindiana/nginx-obs
+
+## Repo files
 ```
-/opt/nginx-obs/
-  app.py              # Flask app + HTML dashboard (self-contained)
-  venv/               # Python venv (flask)
+app.py                          Flask app + HTML dashboard (self-contained)
+setup.sh                        Interactive setup wizard
+nginx-obs.service               Systemd unit template
+README.md                       Project overview + feature list
+SETUP.md                        Manual installation guide
+HOWTO.md                        Dashboard reading guide + API reference
+diagrams/
+  01_system_arch.dot/.png       System architecture
+  02_data_flow.dot/.png         Metrics data flow pipeline
+  03_threading.dot/.png         Threading model + lock flow
+  04_dashboard_ui.dot/.png      Dashboard UI component map
+  05_deployment.dot/.png        Deployment topology (rpi4 + LAN)
+session.md                      This file
+```
+
+## On-server files
+```
+/opt/nginx-obs/app.py
+/opt/nginx-obs/venv/
 /etc/systemd/system/nginx-obs.service
-/etc/nginx/sites-enabled/default  (modified — added stub_status)
+/etc/nginx/sites-enabled/default  (modified)
 ```
 
-Local copy: `~/Documents/claude_creations/2026-04-28_131144_nginx-obs/`
+## Key decisions
+- Python/Flask over Go: faster iteration for a UI-heavy app
+- SSE over WebSocket: simpler, no special nginx config needed
+- Relative EventSource URL: works transparently under nginx proxy or direct port
+- `splines=spline` in Graphviz DOT: `ortho` drops edge labels silently

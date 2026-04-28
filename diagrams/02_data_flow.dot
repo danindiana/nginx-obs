@@ -1,0 +1,112 @@
+digraph data_flow {
+    graph [
+        bgcolor="#0d1117"
+        fontname="Helvetica"
+        fontcolor="#e6edf3"
+        label="NGINX Observatory — Metrics Data Flow"
+        labelloc="t"
+        fontsize=18
+        pad=0.6
+        splines=spline
+        rankdir=TB
+        nodesep=0.6
+        ranksep=0.8
+    ]
+    node [
+        fontname="Helvetica"
+        fontsize=12
+        fontcolor="#e6edf3"
+        style="filled,rounded"
+        shape=box
+        penwidth=1.5
+    ]
+    edge [
+        fontname="Helvetica"
+        fontsize=10
+        penwidth=1.5
+        fontcolor="#7d8590"
+    ]
+
+    // Sources
+    stub_status [
+        label="nginx stub_status\nActive conns · accepts\nhandled · requests\nReading/Writing/Waiting"
+        fillcolor="#0d1f15" color="#3fb950" fontcolor="#3fb950"
+        shape=cylinder
+    ]
+    access_log [
+        label="access.log\n192.168.1.x - - [ts]\n\"GET /path\" 200 bytes"
+        fillcolor="#1a1000" color="#d29922" fontcolor="#d29922"
+        shape=note
+    ]
+
+    // Collector thread
+    collector [
+        label="collector thread\npoll every 1 s\nΔreqs → RPS"
+        fillcolor="#1a2a3a" color="#38bdf8" fontcolor="#38bdf8"
+    ]
+
+    // Log tailer thread
+    tailer [
+        label="log tailer thread\ntail -F\nparse combined log"
+        fillcolor="#1a1a2a" color="#a371f7" fontcolor="#a371f7"
+    ]
+
+    // Shared state
+    subgraph cluster_state {
+        label="Shared State  (threading.Lock)"
+        fontcolor="#7d8590"
+        fontsize=11
+        color="#21262d"
+        style=filled
+        fillcolor="#111820"
+
+        ts_conn   [label="ts_conn  deque(120)\n(active,reading,writing,waiting)" fillcolor="#161b22" color="#38bdf8"]
+        ts_rps    [label="ts_rps  deque(120)\nrequests/sec" fillcolor="#161b22" color="#38bdf8"]
+        status_win [label="status_win  deque(20k)\n(timestamp, class)" fillcolor="#161b22" color="#d29922"]
+        path_counts [label="path_counts  defaultdict\n/path → hit count" fillcolor="#161b22" color="#a371f7"]
+        ip_counts   [label="ip_counts  defaultdict\nIP → hit count" fillcolor="#161b22" color="#a371f7"]
+        recent_log  [label="recent_log  deque(100)\nlast access log lines" fillcolor="#161b22" color="#d29922"]
+    }
+
+    // SSE generator
+    sse_gen [
+        label="SSE generator\n/api/metrics\nemit every 2 s"
+        fillcolor="#1c2a1c" color="#3fb950" fontcolor="#3fb950"
+    ]
+
+    // Browser
+    subgraph cluster_browser {
+        label="Browser"
+        fontcolor="#7d8590"
+        fontsize=11
+        color="#21262d"
+        style=dashed
+
+        chartjs   [label="Chart.js\nline charts" fillcolor="#1c2333" color="#38bdf8"]
+        tables    [label="Top paths/IPs\ntables" fillcolor="#1c2333" color="#a371f7"]
+        stat_cards [label="Stat cards\nactive/RPS/errors" fillcolor="#1c2333" color="#3fb950"]
+        log_panel [label="Live log\npanel" fillcolor="#1c2333" color="#d29922"]
+    }
+
+    stub_status -> collector [label="urlopen()" color="#3fb950"]
+    access_log  -> tailer    [label="tail -F" color="#d29922"]
+
+    collector -> ts_conn    [color="#38bdf8"]
+    collector -> ts_rps     [color="#38bdf8"]
+    tailer    -> status_win [color="#d29922"]
+    tailer    -> path_counts [color="#a371f7"]
+    tailer    -> ip_counts   [color="#a371f7"]
+    tailer    -> recent_log  [color="#d29922"]
+
+    ts_conn    -> sse_gen [color="#38bdf8"]
+    ts_rps     -> sse_gen [color="#38bdf8"]
+    status_win -> sse_gen [color="#d29922"]
+    path_counts -> sse_gen [color="#a371f7"]
+    ip_counts   -> sse_gen [color="#a371f7"]
+    recent_log  -> sse_gen [color="#d29922"]
+
+    sse_gen -> chartjs    [label="conn_active[]\nrps[]" color="#38bdf8" style=bold]
+    sse_gen -> tables     [label="top_paths[]\ntop_ips[]" color="#a371f7" style=bold]
+    sse_gen -> stat_cards [label="active, rps_now\nerror_rate" color="#3fb950" style=bold]
+    sse_gen -> log_panel  [label="logs[]" color="#d29922" style=bold]
+}
